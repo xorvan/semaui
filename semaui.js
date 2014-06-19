@@ -507,7 +507,7 @@ function $RouteProvider(){
           last = $route.current;
 
       if(!next){
-        next = $http({method: "GET", url: $location.path(), headers: {"Accept": "application/ld+json, application/json"}})
+        next = $http({method: "GET", url: $location.url(), headers: {"Accept": "application/ld+json, application/json"}})
         .then(function(result){
           var resTypes = result.data instanceof Array ? result.data[0]["@type"] : result.data["@type"],
             hash = $location.hash() || "";

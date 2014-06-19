@@ -1,7 +1,7 @@
 {
-  "name": "angular-route",
-  "version": "1.2.16",
-  "main": "./angular-route.js",
+  "name": "semaui",
+  "version": "0.0.0",
+  "main": "./semaui.js",
   "dependencies": {
     "angular": "1.2.16"
   }
