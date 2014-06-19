@@ -527,6 +527,7 @@ function $RouteProvider(){
               rr = r;
             }
           }
+          rr.params = $location.search();
           return rr;
         })
       }
