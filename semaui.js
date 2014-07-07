@@ -46,7 +46,8 @@ function $RouteProvider(){
 
   var routes = {},
     lastPriority = 1,
-    types = {};
+    types = {},
+    prefixes = {};
 
   /**
    * @ngdoc method
@@ -169,11 +170,31 @@ function $RouteProvider(){
     return this;
   };
 
+  this.register = function(prefix, iri){
+    if(!iri){
+      iri = prefix;
+      prefix = "";
+    }
+    prefixes[prefix+":"] = iri;
+    return this;
+  };
+
+  function resolve(iri){
+    var parts = /^([^:]*:)([^\/:]*)$/.exec(iri);
+    if(parts && prefixes[parts[1]]){
+      return prefixes[parts[1]] + parts[2]
+    }
+    return iri;
+  };
+
+
   this.type = function(type, hash, route){
     if(!route){
       route = hash;
       hash = "";
     }
+
+    var type = resolve(type);
     if(!types[type]){
       types[type] = {};
     }
@@ -504,12 +525,17 @@ function $RouteProvider(){
 
     function updateRoute() {
       var next = parseRoute(),
-          last = $route.current;
+          last = $route.current,
+          resource;
 
       if(!next){
         next = $http({method: "GET", url: $location.url(), headers: {"Accept": "application/ld+json, application/json"}})
         .then(function(result){
-          var resTypes = result.data instanceof Array ? result.data[0]["@type"] : result.data["@type"],
+          resource = result.data
+          return jsonld.promises().expand(resource);
+        })
+        .then(function(result){
+          var resTypes = result instanceof Array ? result[0]["@type"] : result["@type"],
             hash = $location.hash() || "";
 
           if(!resTypes.length) resTypes = [resTypes];
@@ -518,10 +544,11 @@ function $RouteProvider(){
             var t = resTypes[i], rr;
             if(types[t]){
               var r = angular.copy(types[t][hash] || types[t][""]);
+              if(!r) continue;
               if(rr && rr.priority > r.priority) continue;
               if(!r.resolve) r.resolve = {};
               r.resolve.resource = function(){
-                return result.data;
+                return resource;
               }
               r.$$route = types[t];
               rr = r;
@@ -532,17 +559,19 @@ function $RouteProvider(){
         })
       }
 
-      if (next && last && next.$$route === last.$$route
-          && angular.equals(next.pathParams, last.pathParams)
-          && !next.reloadOnSearch && !forceReload) {
-        last.params = next.params;
-        angular.copy(last.params, $routeParams);
-        $rootScope.$broadcast('$routeUpdate', last);
-      } else if (next || last) {
 
-        $q.when(next).
-          then(function(nxt) {
-            next = nxt;
+      $q.when(next).
+        then(function(nxt) {
+          next = nxt;
+
+          if (next && last && next.$$route === last.$$route
+              && angular.equals(next.pathParams, last.pathParams)
+              && !next.reloadOnSearch && !forceReload) {
+            last.params = next.params;
+            angular.copy(last.params, $routeParams);
+            $rootScope.$broadcast('$routeUpdate', last);
+          } else if (next || last) {
+
             forceReload = false;
             $rootScope.$broadcast('$routeChangeStart', next, last);
             $route.current = next;
@@ -584,24 +613,25 @@ function $RouteProvider(){
               if (angular.isDefined(template)) {
                 locals['$template'] = template;
               }
-              return $q.all(locals);
+              return $q.all(locals)
+              // after route change
+              .then(function(locals) {
+                if (next == $route.current) {
+                  if (next) {
+                    next.locals = locals;
+                    angular.copy(next.params, $routeParams);
+                  }
+                  $rootScope.$broadcast('$routeChangeSuccess', next, last);
+                }
+              }, function(error) {
+                if (next == $route.current) {
+                  $rootScope.$broadcast('$routeChangeError', next, last, error);
+                }
+              });
+
             }
-          }).
-          // after route change
-          then(function(locals) {
-            if (next == $route.current) {
-              if (next) {
-                next.locals = locals;
-                angular.copy(next.params, $routeParams);
-              }
-              $rootScope.$broadcast('$routeChangeSuccess', next, last);
-            }
-          }, function(error) {
-            if (next == $route.current) {
-              $rootScope.$broadcast('$routeChangeError', next, last, error);
-            }
-          });
-      }
+          }
+      })
     }
 
 
