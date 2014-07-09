@@ -5,6 +5,8 @@
  */
 (function(window, angular, undefined) {'use strict';
 
+var semaResourceMinErr = angular.$$minErr('semaResource');
+
 /**
  * @ngdoc module
  * @name ngRoute
@@ -169,6 +171,22 @@ function $RouteProvider(){
 
     return this;
   };
+
+  function shallowClearAndCopy(src, dst) {
+    dst = dst || {};
+
+    angular.forEach(dst, function(value, key){
+      delete dst[key];
+    });
+
+    for (var key in src) {
+      if (src.hasOwnProperty(key) && !(key.charAt(0) === '$' && key.charAt(1) === '$')) {
+        dst[key] = src[key];
+      }
+    }
+
+    return dst;
+  }
 
   this.register = function(prefix, iri){
     if(!iri){
@@ -485,6 +503,120 @@ function $RouteProvider(){
 
     $rootScope.$on('$locationChangeSuccess', updateRoute);
 
+
+    var actions = {
+      'get': {method: "GET"},
+      'put': {method: "PUT", autoData: true},
+      'post': {method: "POST", autoData: true},
+      'delete': {method: "DELETE"},
+      'patch': {method: "PATCH"}
+    }
+
+
+    function Resource(value){
+      shallowClearAndCopy(value || {}, this);
+    }
+
+    var isFunction = angular.isFunction,
+      isString = angular.isString,
+      noop = angular.noop;
+
+    angular.forEach(actions, function(action, name){
+      Resource.prototype["$" + name] = function(a1, a2, a3, a4) {
+        var params, data, success, error;
+
+        /* jshint -W086 */ /* (purposefully fall through case statements) */
+        switch(arguments.length) {
+        case 4:
+          error = a4;
+          success = a3;
+          //fallthrough
+        case 3:
+        case 2:
+          if (isFunction(a2)) {
+            if (isFunction(a1)) {
+              success = a1;
+              error = a2;
+              break;
+            }
+
+            success = a2;
+            error = a3;
+            //fallthrough
+          } else {
+            params = a1;
+            data = a2;
+            success = a3;
+            break;
+          }
+        case 1:
+          if (isFunction(a1)) success = a1;
+          else if (isString(a1) || a1.rel) params = a1;
+          else data = a1;
+          break;
+        case 0: break;
+        default:
+          throw semaResourceMinErr('badargs',
+            "Expected up to 4 arguments [params, data, success, error], got {0} arguments",
+            arguments.length);
+        }
+
+        if(!params) params = {rel: "self"};
+
+        if(isString(params)) params = {rel: params};
+
+        if(!data && action.autoData) data = this;
+
+        var value = new Resource();
+        var promise = $q.when(jsonld.promises().expand(this))
+        .then(function(expanded){
+          console.log("ex", expanded, params, data)
+          var resource = expanded[0],
+            httpConfig = {method: action.method, headers: {"Accept": "application/ld+json, application/json"}}
+          ;
+          if(!params.rel || params.rel == "self"){
+            httpConfig.url = resource["@id"];
+          }else{
+            var predicate = resolve(params.rel),
+              rel = resource[predicate];
+
+            if(!rel)
+              throw semaResourceMinErr('badrel',
+                "Relation {0} not found in the resource {1}",
+                predicate, resource);
+
+            httpConfig.url = rel[0]["@id"];
+          }
+
+          if(data) httpConfig.data = data;
+          console.log("conf", httpConfig)
+          return $http(httpConfig);
+        })
+        .then(function(response){
+          console.log("action completed", response)
+          shallowClearAndCopy(response.data, value)
+          value.$resolved = true;
+
+          (success||noop)(value, response.headers);
+
+          return value;
+        }, function(response) {
+          value.$resolved = true;
+
+          (error||noop)(response);
+
+          return $q.reject(response);
+        })
+
+        value.$resolved = false
+        value.$promise = promise;
+
+        return value;
+
+      }
+    })
+
+
     return $route;
 
     /////////////////////////////////////////////////////
@@ -535,8 +667,12 @@ function $RouteProvider(){
           return jsonld.promises().expand(resource);
         })
         .then(function(result){
-          var resTypes = result instanceof Array ? result[0]["@type"] : result["@type"],
+          var resTypes = result[0]["@type"],
             hash = $location.hash() || "";
+
+          resource = new Resource(resource);
+
+          window.RRR = resource
 
           if(!resTypes.length) resTypes = [resTypes];
 
@@ -548,6 +684,7 @@ function $RouteProvider(){
               if(rr && rr.priority > r.priority) continue;
               if(!r.resolve) r.resolve = {};
               r.resolve.resource = function(){
+                console.log("gg", Resource.prototype)
                 return resource;
               }
               r.$$route = types[t];
