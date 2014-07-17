@@ -205,6 +205,14 @@ function $RouteProvider(){
     return iri;
   };
 
+  function Route(){
+
+  }
+
+  Route.prototype.is = function(type){
+    return !!~this.types.indexOf(resolve(type));
+  }
+
 
   this.type = function(type, hash, route){
     if(!route){
@@ -216,10 +224,11 @@ function $RouteProvider(){
     if(!types[type]){
       types[type] = {};
     }
-    types[type][hash] = angular.extend(
+    types[type][hash] = angular.extend(new Route,
       {reloadOnSearch: true, priority: lastPriority ++},
       route
     );
+
 
     return this;
   }
@@ -684,10 +693,11 @@ function $RouteProvider(){
               if(rr && rr.priority > r.priority) continue;
               if(!r.resolve) r.resolve = {};
               r.resolve.resource = function(){
-                console.log("gg", Resource.prototype)
                 return resource;
               }
               r.$$route = types[t];
+              r.type = t;
+              r.types = resTypes;
               rr = r;
             }
           }
