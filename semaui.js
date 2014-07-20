@@ -47,6 +47,7 @@ function $RouteProvider(){
   }
 
   var routes = {},
+    codes = {},
     lastPriority = 1,
     types = {},
     prefixes = {};
@@ -151,22 +152,30 @@ function $RouteProvider(){
    * Adds a new route definition to the `$route` service.
    */
   this.when = function(path, route) {
-    routes[path] = angular.extend(
-      {reloadOnSearch: true},
-      route,
-      path && pathRegExp(path, route)
-    );
-
-    // create redirection for trailing slashes
-    if (path) {
-      var redirectPath = (path[path.length-1] == '/')
-            ? path.substr(0, path.length-1)
-            : path +'/';
-
-      routes[redirectPath] = angular.extend(
-        {redirectTo: path},
-        pathRegExp(redirectPath, route)
+    if(angular.isNumber(path)){
+      codes[path] = angular.extend(
+        {reloadOnSearch: true},
+        route
       );
+
+    }else{
+      routes[path] = angular.extend(
+        {reloadOnSearch: true},
+        route,
+        path && pathRegExp(path, route)
+      );
+
+      // create redirection for trailing slashes
+      if (path) {
+        var redirectPath = (path[path.length-1] == '/')
+              ? path.substr(0, path.length-1)
+              : path +'/';
+
+        routes[redirectPath] = angular.extend(
+          {redirectTo: path},
+          pathRegExp(redirectPath, route)
+        );
+      }
     }
 
     return this;
@@ -667,11 +676,13 @@ function $RouteProvider(){
     function updateRoute() {
       var next = parseRoute(),
           last = $route.current,
+          response,
           resource;
 
       if(!next){
         next = $http({method: "GET", url: $location.url(), headers: {"Accept": "application/ld+json, application/json"}})
         .then(function(result){
+          response = result;
           resource = result.data
           return jsonld.promises().expand(resource);
         })
@@ -681,21 +692,16 @@ function $RouteProvider(){
 
           resource = new Resource(resource);
 
-          window.RRR = resource
-
           if(!resTypes.length) resTypes = [resTypes];
 
           for(var i = 0; i <resTypes.length; i++){
             var t = resTypes[i], rr;
             if(types[t]){
-              var r = angular.copy(types[t][hash] || types[t][""]);
+              var route = types[t][hash] || types[t][""];
+              var r = angular.copy(route);
               if(!r) continue;
               if(rr && rr.priority > r.priority) continue;
-              if(!r.resolve) r.resolve = {};
-              r.resolve.resource = function(){
-                return resource;
-              }
-              r.$$route = types[t];
+              r.$$route = route;
               r.type = t;
               r.types = resTypes;
               rr = r;
@@ -704,12 +710,29 @@ function $RouteProvider(){
           rr.params = $location.search();
           return rr;
         })
+        .catch(function(error){
+          var route;
+
+          resource = error.data;
+          if(route = codes[error.status]){
+            var r = angular.copy(route);
+            r.$$route = route;
+            return r;
+          }
+          throw error;
+        })
       }
 
 
       $q.when(next).
         then(function(nxt) {
           next = nxt;
+          next.response = response;
+
+          if(!next.resolve) next.resolve = {};
+          next.resolve.resource = function(){
+            return resource;
+          }
 
           if (next && last && next.$$route === last.$$route
               && angular.equals(next.pathParams, last.pathParams)
@@ -718,7 +741,6 @@ function $RouteProvider(){
             angular.copy(last.params, $routeParams);
             $rootScope.$broadcast('$routeUpdate', last);
           } else if (next || last) {
-
             forceReload = false;
             $rootScope.$broadcast('$routeChangeStart', next, last);
             $route.current = next;
