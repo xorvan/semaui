@@ -24,7 +24,35 @@ var semaResourceMinErr = angular.$$minErr('semaResource');
  */
  /* global -ngRouteModule */
 var ngRouteModule = angular.module('semaui', ['ng']).
+                        factory("semaResource", function(){return Resource}).
                         provider('$route', $RouteProvider);
+
+
+
+function shallowClearAndCopy(src, dst) {
+  dst = dst || {};
+
+  angular.forEach(dst, function(value, key){
+    delete dst[key];
+  });
+
+  for (var key in src) {
+    if (src.hasOwnProperty(key) && !(key.charAt(0) === '$' && key.charAt(1) === '$')) {
+      dst[key] = src[key];
+    }
+  }
+
+  return dst;
+}
+
+function Resource(value){
+  shallowClearAndCopy(value || {}, this);
+}
+
+Resource.prototype.$is = function(type){
+  return this["@type"] && !!~this["@type"].indexOf(type);
+}
+
 
 /**
  * @ngdoc provider
@@ -180,22 +208,6 @@ function $RouteProvider(){
 
     return this;
   };
-
-  function shallowClearAndCopy(src, dst) {
-    dst = dst || {};
-
-    angular.forEach(dst, function(value, key){
-      delete dst[key];
-    });
-
-    for (var key in src) {
-      if (src.hasOwnProperty(key) && !(key.charAt(0) === '$' && key.charAt(1) === '$')) {
-        dst[key] = src[key];
-      }
-    }
-
-    return dst;
-  }
 
   this.register = function(prefix, iri){
     if(!iri){
@@ -531,9 +543,6 @@ function $RouteProvider(){
     }
 
 
-    function Resource(value){
-      shallowClearAndCopy(value || {}, this);
-    }
 
     var isFunction = angular.isFunction,
       isString = angular.isString,
