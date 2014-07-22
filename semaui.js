@@ -597,7 +597,6 @@ function $RouteProvider(){
         var value = new Resource();
         var promise = $q.when(jsonld.promises().expand(this))
         .then(function(expanded){
-          console.log("ex", expanded, params, data)
           var resource = expanded[0],
             httpConfig = {method: action.method, headers: {"Accept": "application/ld+json, application/json"}}
           ;
@@ -616,11 +615,9 @@ function $RouteProvider(){
           }
 
           if(data) httpConfig.data = data;
-          console.log("conf", httpConfig)
           return $http(httpConfig);
         })
         .then(function(response){
-          console.log("action completed", response)
           shallowClearAndCopy(response.data, value)
           value.$resolved = true;
 
