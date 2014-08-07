@@ -24,7 +24,16 @@ var semaResourceMinErr = angular.$$minErr('semaResource');
  */
  /* global -ngRouteModule */
 var ngRouteModule = angular.module('semaui', ['ng']).
-                        factory("semaResource", function(){return Resource}).
+                        factory("semaResource", function($http){
+                          Resource.getRoot = function(){
+                            return $http({method: "GET", url:"/", headers: {"Accept": "application/ld+json, application/json"}})
+                            .then(function(response){
+                              return new Resource(response.data);
+                            });
+                          }
+                          Resource.resolve = resolve;
+                          return Resource
+                        }).
                         provider('$route', $RouteProvider);
 
 
@@ -45,14 +54,20 @@ function shallowClearAndCopy(src, dst) {
   return dst;
 }
 
+var prefixes = {};
+
+function resolve(iri){
+  var parts = /^([^:]*:)([^\/:]*)$/.exec(iri);
+  if(parts && prefixes[parts[1]]){
+    return prefixes[parts[1]] + parts[2]
+  }
+  return iri;
+};
+
+
 function Resource(value){
   shallowClearAndCopy(value || {}, this);
 }
-
-Resource.prototype.$is = function(type){
-  return this["@type"] && !!~this["@type"].indexOf(type);
-}
-
 
 /**
  * @ngdoc provider
@@ -77,8 +92,8 @@ function $RouteProvider(){
   var routes = {},
     codes = {},
     lastPriority = 1,
-    types = {},
-    prefixes = {};
+    types = {};
+
 
   /**
    * @ngdoc method
@@ -218,13 +233,6 @@ function $RouteProvider(){
     return this;
   };
 
-  function resolve(iri){
-    var parts = /^([^:]*:)([^\/:]*)$/.exec(iri);
-    if(parts && prefixes[parts[1]]){
-      return prefixes[parts[1]] + parts[2]
-    }
-    return iri;
-  };
 
   function Route(){
 
@@ -548,6 +556,19 @@ function $RouteProvider(){
       isString = angular.isString,
       noop = angular.noop;
 
+    Resource.prototype.$is = function(type){
+      type = resolve(type);
+      return $q.when(jsonld.promises().expand(this))
+      .then(function(expanded){
+        return expanded["@type"] && !!~expanded["@type"].indexOf(type);
+      })
+    }
+
+    Resource.prototype.$expand = function(){
+      return $q.when(jsonld.promises().expand(this));
+    }
+
+
     angular.forEach(actions, function(action, name){
       Resource.prototype["$" + name] = function(a1, a2, a3, a4) {
         var params, data, success, error;
@@ -697,7 +718,7 @@ function $RouteProvider(){
             hash = $location.hash() || "";
 
           resource = new Resource(resource);
-
+console.log("rrrrrr hre" )
           if(!resTypes.length) resTypes = [resTypes];
 
           for(var i = 0; i <resTypes.length; i++){
