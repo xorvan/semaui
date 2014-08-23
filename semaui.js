@@ -635,6 +635,10 @@ function $RouteProvider(){
             httpConfig.url = rel[0]["@id"];
           }
 
+          if(params.params){
+            httpConfig.params = params.params;
+          }
+
           if(data) httpConfig.data = data;
           return $http(httpConfig);
         })
