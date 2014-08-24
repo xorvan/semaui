@@ -639,6 +639,10 @@ function $RouteProvider(){
             httpConfig.params = params.params;
           }
 
+          if(params.headers){
+            angular.extend(httpConfig.headers, params.headers);
+          }
+
           if(data) httpConfig.data = data;
           return $http(httpConfig);
         })
