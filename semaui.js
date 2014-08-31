@@ -195,6 +195,7 @@ function $RouteProvider(){
    * Adds a new route definition to the `$route` service.
    */
   this.when = function(path, route) {
+
     if(angular.isNumber(path)){
       codes[path] = angular.extend(
         {reloadOnSearch: true},
@@ -202,6 +203,8 @@ function $RouteProvider(){
       );
 
     }else{
+      if(path[0] != "/") return this.type.apply(this, arguments);
+      
       routes[path] = angular.extend(
         {reloadOnSearch: true},
         route,
@@ -257,7 +260,6 @@ function $RouteProvider(){
       {reloadOnSearch: true, priority: lastPriority ++},
       route
     );
-
 
     return this;
   }
