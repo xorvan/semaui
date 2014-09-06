@@ -31,6 +31,20 @@ var ngRouteModule = angular.module('semaui', ['ng']).
                               return new Resource(response.data);
                             });
                           }
+                          Resource.http = function(config){
+                            if(!config.headers){
+                              config.headers = {};
+                            }
+
+                            if(!config.headers.Accept){
+                              config.headers.Accept = "application/ld+json, application/json";
+                            }
+
+                            return $http(config)
+                            .then(function(response){
+                              return new Resource(response.data);
+                            });
+                          }
                           Resource.resolve = resolve;
                           return Resource
                         }).
@@ -204,7 +218,7 @@ function $RouteProvider(){
 
     }else{
       if(path[0] != "/") return this.type.apply(this, arguments);
-      
+
       routes[path] = angular.extend(
         {reloadOnSearch: true},
         route,
