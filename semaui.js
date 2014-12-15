@@ -217,7 +217,7 @@ function $RouteProvider(){
       );
 
     }else{
-      if(path[0] != "/") return this.type.apply(this, arguments);
+      if(path && path[0] != "/") return this.type.apply(this, arguments);
 
       routes[path] = angular.extend(
         {reloadOnSearch: true},
@@ -731,7 +731,8 @@ function $RouteProvider(){
           resource;
 
       if(!next){
-        next = $http({method: "GET", url: $location.url(), headers: {"Accept": "application/ld+json, application/json"}})
+        var params = ~navigator.appVersion.indexOf("MSIE") ? {__IEBUG__: (new Date)*1} : {};
+        next = $http({method: "GET", url: $location.url(), headers: {"Accept": "application/ld+json, application/json"}, params:params})
         .then(function(result){
           response = result;
           resource = result.data
@@ -742,7 +743,7 @@ function $RouteProvider(){
             hash = $location.hash() || "";
 
           resource = new Resource(resource);
-console.log("rrrrrr hre" )
+
           if(!resTypes.length) resTypes = [resTypes];
 
           for(var i = 0; i <resTypes.length; i++){
@@ -758,7 +759,12 @@ console.log("rrrrrr hre" )
               rr = r;
             }
           }
-          rr.params = $location.search();
+          if(rr){
+            rr.params = $location.search();
+          }else{
+            //Fallback to otherwise if exists
+            rr = routes[null] && inherit(routes[null], {params: {}, pathParams:{}});
+          }
           return rr;
         })
         .catch(function(error){
@@ -778,6 +784,11 @@ console.log("rrrrrr hre" )
       $q.when(next).
         then(function(nxt) {
           next = nxt;
+
+          if(!next){
+            $rootScope.$broadcast('$routeChangeError', next, last, new Error("No route!"));
+            return false;
+          }
           next.response = response;
 
           if(!next.resolve) next.resolve = {};
@@ -869,6 +880,8 @@ console.log("rrrrrr hre" )
           match.$$route = route;
         }
       });
+      //No fallback
+      return match;
       // No route matched; fallback to "otherwise" route
       return match || routes[null] && inherit(routes[null], {params: {}, pathParams:{}});
     }
