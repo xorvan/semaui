@@ -731,7 +731,7 @@ function $RouteProvider(){
           resource;
 
       if(!next){
-        var params = ~navigator.appVersion.indexOf("MSIE") ? {__IEBUG__: (new Date)*1} : {};
+        var params = ~navigator.userAgent.indexOf("MSIE") || ~navigator.userAgent.indexOf("Trident") ? {__IEBUG__: (new Date)*1} : {};
         next = $http({method: "GET", url: $location.url(), headers: {"Accept": "application/ld+json, application/json"}, params:params})
         .then(function(result){
           response = result;
