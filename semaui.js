@@ -7,6 +7,8 @@
 
 var semaResourceMinErr = angular.$$minErr('semaResource');
 
+var __IEBUG_PARAMS__  = ~navigator.userAgent.indexOf("MSIE") || ~navigator.userAgent.indexOf("Trident") ? {__IEBUG__: (new Date)*1} : {};
+
 /**
  * @ngdoc module
  * @name ngRoute
@@ -26,7 +28,7 @@ var semaResourceMinErr = angular.$$minErr('semaResource');
 var ngRouteModule = angular.module('semaui', ['ng']).
                         factory("semaResource", function($http){
                           Resource.getRoot = function(){
-                            return $http({method: "GET", url:"/", headers: {"Accept": "application/ld+json, application/json"}})
+                            return $http({method: "GET", url:"/", headers: {"Accept": "application/ld+json, application/json"}, params: __IEBUG_PARAMS__})
                             .then(function(response){
                               return new Resource(response.data);
                             });
@@ -38,6 +40,12 @@ var ngRouteModule = angular.module('semaui', ['ng']).
 
                             if(!config.headers.Accept){
                               config.headers.Accept = "application/ld+json, application/json";
+                            }
+
+                            if(!config.params){
+                              config.params = __IEBUG_PARAMS__;
+                            }else if(__IEBUG_PARAMS__.__IEBUG__){
+                              config.params.__IEBUG__ =  __IEBUG_PARAMS__.__IEBUG__;
                             }
 
                             return $http(config)
@@ -635,7 +643,7 @@ function $RouteProvider(){
         var promise = $q.when(jsonld.promises().expand(this))
         .then(function(expanded){
           var resource = expanded[0],
-            httpConfig = {method: action.method, headers: {"Accept": "application/ld+json, application/json"}}
+            httpConfig = {method: action.method, headers: {"Accept": "application/ld+json, application/json"}, params: __IEBUG_PARAMS__}
           ;
           if(!params.rel || params.rel == "self"){
             httpConfig.url = resource["@id"];
@@ -730,9 +738,8 @@ function $RouteProvider(){
           response,
           resource;
 
-      if(!next){
-        var params = ~navigator.userAgent.indexOf("MSIE") || ~navigator.userAgent.indexOf("Trident") ? {__IEBUG__: (new Date)*1} : {};
-        next = $http({method: "GET", url: $location.url(), headers: {"Accept": "application/ld+json, application/json"}, params:params})
+      if(!next){        
+        next = $http({method: "GET", url: $location.url(), headers: {"Accept": "application/ld+json, application/json"}, params: __IEBUG_PARAMS__})
         .then(function(result){
           response = result;
           resource = result.data
