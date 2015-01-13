@@ -5,9 +5,71 @@
  */
 (function(window, angular, undefined) {'use strict';
 
-var semaResourceMinErr = angular.$$minErr('semaResource');
-
 var __IEBUG_PARAMS__  = ~navigator.userAgent.indexOf("MSIE") || ~navigator.userAgent.indexOf("Trident") ? {__IEBUG__: (new Date)*1} : {};
+
+function resolveUrl(url, base_url) {
+  var doc      = document
+    , old_base = doc.getElementsByTagName('base')[0]
+    , old_href = old_base && old_base.href
+    , doc_head = doc.head || doc.getElementsByTagName('head')[0]
+    , our_base = old_base || doc_head.appendChild(doc.createElement('base'))
+    , resolver = doc.createElement('a')
+    , resolved_url
+    ;
+  our_base.href = base_url;
+  resolver.href = url;
+  resolved_url  = resolver.href; // browser magic at work here
+ 
+  if (old_base) old_base.href = old_href;
+  else doc_head.removeChild(our_base);
+ 
+  return resolved_url;
+}
+
+function parseLink(link) {
+  try {
+    var parts     =  link.split(';')
+      , linkUrl   =  parts.shift().replace(/[<>]/g, '').trim()
+
+    var info = parts
+      .reduce(function (acc, p) {
+        // rel="next" => 1: rel 2: next
+        var m = p.match(/ *(.+) *= *("|')(.+)("|')/)
+        if (m) acc[m[1]] = m[3];
+        return acc;
+      }, {});
+    
+    info.url = linkUrl;
+    return info;
+  } catch (e) {
+    return null;
+  }
+}
+
+function parseLinks(linkHeader, base) {
+   if (!linkHeader) return null;
+   var all = linkHeader.split(',')
+    .map(parseLink)
+    .filter(function (x) { return x && x.rel; })
+
+  var map = all
+    .reduce(function (acc, x) {
+      var l = resolveUrl(x.url, base);
+      if(acc[x.rel]){
+        if(acc[x.rel] instanceof Array){
+          acc[x.rel].push(l);
+        }else{
+          acc[x.rel] = [acc[x.rel], l];
+        }
+      }else{
+        acc[x.rel] = l;
+      }
+      return acc;
+    }, {});
+
+  map.$all = all;
+  return map;
+};
 
 /**
  * @ngdoc module
@@ -26,37 +88,142 @@ var __IEBUG_PARAMS__  = ~navigator.userAgent.indexOf("MSIE") || ~navigator.userA
  */
  /* global -ngRouteModule */
 var ngRouteModule = angular.module('semaui', ['ng']).
-                        factory("semaResource", function($http){
-                          Resource.getRoot = function(){
-                            return $http({method: "GET", url:"/", headers: {"Accept": "application/ld+json, application/json"}, params: __IEBUG_PARAMS__})
-                            .then(function(response){
-                              return new Resource(response.data);
-                            });
-                          }
-                          Resource.http = function(config){
-                            if(!config.headers){
-                              config.headers = {};
-                            }
+  factory("semaResource", function($http, $window){
+    Resource.getRoot = function(){
+      return $http({method: "GET", url:"/", headers: {"Accept": "application/ld+json, application/json"}, params: __IEBUG_PARAMS__})
+      .then(function(response){
+        return new Resource(response.data, resolveUrl("/"), response.headers);
+      });
+    }
+    Resource.http = function(config){
+      if(!config.headers){
+        config.headers = {};
+      }
 
-                            if(!config.headers.Accept){
-                              config.headers.Accept = "application/ld+json, application/json";
-                            }
+      if(!config.headers.Accept){
+        config.headers.Accept = "application/ld+json, application/json";
+      }
 
-                            if(!config.params){
-                              config.params = __IEBUG_PARAMS__;
-                            }else if(__IEBUG_PARAMS__.__IEBUG__){
-                              config.params.__IEBUG__ =  __IEBUG_PARAMS__.__IEBUG__;
-                            }
+      if(!config.params){
+        config.params = __IEBUG_PARAMS__;
+      }else if(__IEBUG_PARAMS__.__IEBUG__){
+        config.params.__IEBUG__ =  __IEBUG_PARAMS__.__IEBUG__;
+      }
 
-                            return $http(config)
-                            .then(function(response){
-                              return new Resource(response.data);
-                            });
-                          }
-                          Resource.resolve = resolve;
-                          return Resource
-                        }).
-                        provider('$route', $RouteProvider);
+      return $http(config)
+      .then(function(response){
+        return new Resource(response.data, resolveUrl(config.url), response.headers);
+      });
+    }
+    Resource.resolve = resolve;
+    return Resource
+  }).
+  provider('$route', $RouteProvider).
+
+  directive('semaInfiniteScroll', function() {
+    return {
+      // restrict: 'M',
+      scope: {resource: "&semaInfiniteScroll"},
+      controller: function($scope, $element, $attrs, $transclude, $location, $timeout){
+        var items = this.items = [], routeUpdateInitiated;
+
+        var offset = 600, 
+          prevScroll = 0,
+          loading = false;
+
+        function getPath(fullUrl) { 
+            var baseLen = $location.absUrl().length - $location.url().length;
+            return fullUrl.substring(baseLen);
+        }
+
+
+        var scrollList = function(e){
+          if(Math.abs(prevScroll - $(window).scrollTop()) < 10 || routeUpdateInitiated){
+            return false;
+          }
+          var p = false;
+          for(var i=1; i < items.length; i++){
+            if(items[i].page == p) continue;
+
+            var r = items[i].element[0].getBoundingClientRect();
+            if(r.top > 10){
+              $timeout(function(){
+                $location.url(getPath(p || items[i].page)).replace();
+              });
+              break;
+            }else{
+              p = items[i].page;
+            }
+          }
+
+          if (prevScroll < $(window).scrollTop() && $(window).scrollTop() >= $(document).height() - $(window).height() - offset){
+            if(!loading){
+              $scope.$apply(function(){
+                loading = true;
+                $scope.$eval($scope.resource).$include("next", function(){
+                  loading = false;
+                }, function(){
+                  loading = false;
+                })
+              })              
+            }
+            
+          } else if (prevScroll > $(window).scrollTop() && $(window).scrollTop() - offset <= 0 ){
+            // TODO: implementing reverse scroll
+          }
+
+          prevScroll = $(window).scrollTop();
+        };
+
+        $scope.$on("$routeUpdateRequest", function(){
+          routeUpdateInitiated = true;
+        });
+
+        $scope.$on("$routeUpdate", function(){
+          routeUpdateInitiated = false;
+        });
+
+        $scope.$on("$routeChangeError", function(){
+          routeUpdateInitiated = false;
+        });
+
+        $scope.$on("$routeChangeStart", function(){
+          $(document).unbind("scroll", scrollList);
+        });
+
+        $(document).bind("scroll", scrollList);
+
+      },
+        
+      link: function(scope, elm, attrs) {
+
+
+      }
+    };
+  }).
+  directive('semaScrollSpy', function() {
+    return {
+      // restrict: 'M',
+      scope: {item: "&semaScrollSpy"},
+      require: '^semaInfiniteScroll',
+      link: function(scope, elm, attrs, semaInfiniteScroll) {
+        var item = scope.$eval(scope.item);
+        semaInfiniteScroll.items.push({
+          page: item.$page,
+          element: elm,
+          hash: item.$$hashKey
+        });
+        scope.$on("$destroy", function(){
+          for(var i = 0; i < semaInfiniteScroll.items.length; i++){
+            if(semaInfiniteScroll.items[0].hash == item.$$hashKey){
+              semaInfiniteScroll.items.splice(i, 1);
+              break;
+            }
+          }
+        })
+      }
+    };
+  });
 
 
 
@@ -87,8 +254,8 @@ function resolve(iri){
 };
 
 
-function Resource(value){
-  shallowClearAndCopy(value || {}, this);
+function Resource(body, id, headers){
+  this.$process(body, id, headers)
 }
 
 /**
@@ -574,11 +741,21 @@ function $RouteProvider(){
       'patch': {method: "PATCH"}
     }
 
-
-
     var isFunction = angular.isFunction,
       isString = angular.isString,
       noop = angular.noop;
+
+    Resource.prototype.$process = function(body, id, headers){
+      shallowClearAndCopy(body || {}, this);
+      this.$link = headers ? parseLinks(headers("link"), body["@id"]) : {};
+      var self = this.$link.self = id || this["@id"];
+
+      if(this.$members){
+        angular.forEach(this.$members, function(member){
+          member.$page = self;
+          })
+      }
+    }
 
     Resource.prototype.$is = function(type){
       type = resolve(type);
@@ -588,10 +765,49 @@ function $RouteProvider(){
       })
     }
 
+    Resource.prototype.$link = {"$all": []};
+
     Resource.prototype.$expand = function(){
       return $q.when(jsonld.promises().expand(this));
     }
 
+    Resource.prototype.$includes = function(url){
+      return typeof this.$link.self == "string" ? this.$link.self.indexOf == url : this.$link.self.indexOf(url)
+    }
+
+    Resource.prototype.$include = function(rel, success, error){
+      var value = this,
+        dir = rel == "next";
+
+      if(rel != "next" && rel != "prev") throw new Error("Invalid include relation, only 'next' and 'prev' is supported!")
+
+      if(!this.$link[rel]) return this;
+
+      value.$promise = this.$get(rel).$promise
+      .then(function(response){
+
+        value.$members = dir ? value.$members.concat(response.$members) : response.$members.concat(value.$members);
+        value.$link[rel] = response.$link[rel];
+        if( !angular.isArray(value.$link.self) ){
+          value.$link.self = [value.$link.self]
+        }
+        value.$link.self.push(response.$link.self);
+
+        value.$resolved = true;
+
+        (success||noop)(value, response.headers);
+
+      }, function(response){
+        value.$resolved = true;
+
+        (error||noop)(response);
+
+        return $q.reject(response);
+      })
+
+      value.$resolved = false;
+      return value;
+    }
 
     angular.forEach(actions, function(action, name){
       Resource.prototype["$" + name] = function(a1, a2, a3, a4) {
@@ -628,9 +844,7 @@ function $RouteProvider(){
           break;
         case 0: break;
         default:
-          throw semaResourceMinErr('badargs',
-            "Expected up to 4 arguments [params, data, success, error], got {0} arguments",
-            arguments.length);
+          throw new Error("badargs, Expected up to 4 arguments [params, data, success, error], got "+arguments.length+" arguments");
         }
 
         if(!params) params = {rel: "self"};
@@ -639,22 +853,22 @@ function $RouteProvider(){
 
         if(!data && action.autoData) data = this;
 
-        var value = new Resource();
-        var promise = $q.when(jsonld.promises().expand(this))
+        var self = this,
+          httpConfig,
+          value = new Resource(),
+          promise = $q.when(jsonld.promises().expand(this))
+
         .then(function(expanded){
-          var resource = expanded[0],
-            httpConfig = {method: action.method, headers: {"Accept": "application/ld+json, application/json"}, params: __IEBUG_PARAMS__}
-          ;
+          var resource = expanded[0];            
+          httpConfig = {method: action.method, headers: {"Accept": "application/ld+json, application/json"}, params: __IEBUG_PARAMS__}
           if(!params.rel || params.rel == "self"){
             httpConfig.url = resource["@id"];
           }else{
             var predicate = resolve(params.rel),
-              rel = resource[predicate];
+              rel = resource[predicate] || self.$link[predicate] && [{"@id": self.$link[predicate]}];
 
             if(!rel)
-              throw semaResourceMinErr('badrel',
-                "Relation {0} not found in the resource {1}",
-                predicate, resource);
+              throw new Error("badrel, Relation '"+predicate+"' not found in the resource");
 
             httpConfig.url = rel[0]["@id"];
           }
@@ -671,7 +885,12 @@ function $RouteProvider(){
           return $http(httpConfig);
         })
         .then(function(response){
-          shallowClearAndCopy(response.data, value)
+          // TODO: checking consistency
+          var url = httpConfig.url, qs;
+          if(qs = $.param(httpConfig.params)){
+            url += ~url.indexOf("?") ?  "&" + qs : "?" + qs;
+          }
+          value.$process(response.data, resolveUrl(url), response.headers)
           value.$resolved = true;
 
           (success||noop)(value, response.headers);
@@ -738,6 +957,8 @@ function $RouteProvider(){
           response,
           resource;
 
+      $rootScope.$broadcast('$routeUpdateRequest', next, last);
+
       if(!next){        
         next = $http({method: "GET", url: $location.url(), headers: {"Accept": "application/ld+json, application/json"}, params: __IEBUG_PARAMS__})
         .then(function(result){
@@ -749,7 +970,7 @@ function $RouteProvider(){
           var resTypes = result[0]["@type"],
             hash = $location.hash() || "";
 
-          resource = new Resource(resource);
+          resource = new Resource(resource, $location.absUrl(), response.headers);
 
           if(!resTypes.length) resTypes = [resTypes];
 
@@ -808,7 +1029,9 @@ function $RouteProvider(){
               && !next.reloadOnSearch && !forceReload) {
             last.params = next.params;
             angular.copy(last.params, $routeParams);
-            $rootScope.$broadcast('$routeUpdate', last);
+            last.type = next.type;
+            last.types = next.types;
+            $rootScope.$broadcast('$routeUpdate', last, resource);
           } else if (next || last) {
             forceReload = false;
             $rootScope.$broadcast('$routeChangeStart', next, last);
@@ -954,8 +1177,8 @@ function $RouteParamsProvider() {
   this.$get = function() { return {}; };
 }
 
-ngRouteModule.directive('semauiView', semauiViewFactory);
-ngRouteModule.directive('semauiView', semauiViewFillContentFactory);
+ngRouteModule.directive('semaView', semauiViewFactory);
+ngRouteModule.directive('semaView', semauiViewFillContentFactory);
 
 
 /**
