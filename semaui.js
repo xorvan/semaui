@@ -747,7 +747,7 @@ function $RouteProvider(){
 
     Resource.prototype.$process = function(body, id, headers){
       shallowClearAndCopy(body || {}, this);
-      this.$link = headers ? parseLinks(headers("link"), body["@id"]) : {};
+      this.$link = headers ? parseLinks(headers("link"), body["@id"]) || {"$all": []}: {"$all": []};
       var self = this.$link.self = id || this["@id"];
 
       if(this.$members){
@@ -764,8 +764,6 @@ function $RouteProvider(){
         return expanded["@type"] && !!~expanded["@type"].indexOf(type);
       })
     }
-
-    Resource.prototype.$link = {"$all": []};
 
     Resource.prototype.$expand = function(){
       return $q.when(jsonld.promises().expand(this));
