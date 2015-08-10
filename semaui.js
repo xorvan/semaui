@@ -970,6 +970,8 @@ function $RouteProvider(){
 
           resource = new Resource(resource, $location.absUrl(), response.headers);
 
+          resource.$resolved = true;
+
           if(!resTypes.length) resTypes = [resTypes];
 
           for(var i = 0; i <resTypes.length; i++){
